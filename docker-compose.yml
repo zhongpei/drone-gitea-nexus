@@ -1,0 +1,112 @@
+version: "3"
+
+
+services:
+  drone:
+    image: drone/drone:2
+    container_name: drone
+    environment:
+      - DRONE_GITEA_SERVER=http://192.168.2.163:3000
+      - DRONE_GITEA_CLIENT_ID=5e98702b-0711-4428-89c3-2fb5c4a592da
+      - DRONE_GITEA_CLIENT_SECRET=eBxyFy2sFq9ffsrmyAl83mos7TTIe1LYOUsSSGVYy7f0
+      - DRONE_RPC_SECRET=86241c38f4278f0845b3b509c4b4580e
+      - DRONE_SERVER_HOST=192.168.2.163
+        #- DRONE_SERVER_PORT=3001
+      - DRONE_SERVER_PROTO=http
+    restart: always
+    networks:
+      - frontend
+      - backend
+    ports:
+      - "3080:80"
+    volumes:
+      - ./drone:/data
+    depends_on:
+      - gitea
+
+  drone-runner:
+    image: drone/drone-runner-docker:1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DRONE_RPC_PROTO=http
+      - DRONE_RPC_SERVER=http://drone
+      - DRONE_RPC_SECRET=86241c38f4278f0845b3b509c4b4580e
+      - DRONE_RUNNER_CAPACITY=2
+      - DRONE_RUNNER_NAME=my-first-runner
+      - DRONE_RPC_HOST=drone
+    networks:
+      - backend
+    # deploy:
+    # mode: replicated
+        #replicas: 2
+    restart: always
+    depends_on:
+      - drone
+
+  gitea_dump:
+    image: gitea/gitea:1.16.0
+    command: crond -f -l 8
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+    env_file: ./.env
+    volumes:
+      - ./gitea:/etc/periodic/daily:ro
+      - ./gitea:/etc/periodic/15min:ro
+      - ./data/gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+
+  gitea:
+    image: gitea/gitea:1.16.0
+    container_name: gitea
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+    env_file: ./.env
+    restart: always
+    networks:
+      - frontend
+      - backend
+    volumes:
+      - ./data/gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "3000:3000"
+      - "222:22"
+    depends_on:
+      - mysql
+
+  nexus:
+    image: sonatype/nexus3
+    container_name: nexus
+    ports:
+      - "8081:8081"
+      - "5000:5000"
+      - "5001:5001"
+    networks:
+      - frontend
+    volumes:
+      - nexus-data:/nexus-data
+    restart: always
+
+  mysql:
+    build: ./mysql
+    ports:
+      - "127.0.0.1:1306:3306"
+    volumes:
+      - "./data/mysql:/var/lib/mysql"
+    restart: unless-stopped
+    env_file: ./.env
+    networks:
+      - backend
+
+volumes:
+  nexus-data: {}
+  gitea-data: {}
+
+networks:
+  frontend:
+  backend:
